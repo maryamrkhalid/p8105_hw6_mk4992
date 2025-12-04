@@ -84,8 +84,7 @@ baltimore_results %>%
 
 ```
 
-In Baltimore, keeping all over variables fixed, the odds of solving a homicide for a male victim are 
-r round(baltimore_results$estimate, 3) times the odds of solving a homicide for a female victim.
+In Baltimore, keeping all over variables fixed, the odds of solving a homicide for a male victim are `r round(baltimore_results$estimate, 3)` times the odds of solving a homicide for a female victim.
 
 
 ```{r}
@@ -127,8 +126,12 @@ city_glm_results %>%
   theme_minimal()
 ```
 
-Comments on the Plot: 
-# Problem 2: Central Park Weather data
+Th above plot shows the adjusted odds ratios (ORs) for solving homicides comparing male victims to female victims in cities across the United States.
+For most cities demonstrated, the estimated OR is less than 1. This suggests that homicides involving male victims are less likely to be resolved/closed by arrest compared to those involving female victims in those cities, after accommodating for the victim's age and race.
+
+Cities in which their error bar does not cross the dashed red line where OR = 1 have a statistically significant difference. 
+
+New York City, NY, where we live, has the lowest estimated OR, indicating a strong disparity where female victim cases are much more likely to be solved than male victim cases. 
 ```{r} 
 
 #import data
