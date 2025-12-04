@@ -17,6 +17,7 @@ library(tidyverse)
 library(broom)
 library(janitor)
 library(purrr)
+library(modelr)
 
 set.seed(8105)
 
@@ -232,30 +233,121 @@ ci_results %>%
 
 # Problem 3: Child's Birthweight
 ```{r} 
-
 #Load and clean the data for regression analysis (i.e. use appropriate variable names, convert numeric to factor where appropriate, check for the presence of missing data, etc.).
+
+birthweight_df <- 
+  read_csv("data/birthweight.csv") %>% 
+  janitor::clean_names() %>% 
+  mutate(
+    babysex = factor(babysex, levels = c(1, 2), labels = c("Male", "Female")),
+    frace = factor(frace, levels = c(1, 2, 3, 4, 8, 9), 
+                   labels = c("White", "Black", "Asian", "Puerto Rican", "Other", "Unknown")),
+    mrace = factor(mrace, levels = c(1, 2, 3, 4, 8), 
+                   labels = c("White", "Black", "Asian", "Puerto Rican", "Other")),
+    malform = factor(malform, levels = c(0, 1), labels = c("Absent", "Present"))
+  )
+
+# Check for missing data
+missing_data_summary <- map_df(birthweight_df, ~sum(is.na(.)))
+print(missing_data_summary)
+
 
 ```
 
+HYPOTHESIS: birthweight is likely influenced by: 
+- biological factors: gestational age (gaweeks), mother's height (mheight), and mother's pre-pregnancy BMI (ppbmi)
+- behavioral factors: cigarettes smoked during pregnancy (smoken)
+- demographic factors: mother's race (mrace)
 
 ```{r} 
 #Propose a regression model for birthweight. This model may be based on a hypothesized structure for the factors that underly birthweight, on a data-driven model-building process, or a combination of the two. Describe your modeling process and show a plot of model residuals against fitted values – use add_predictions and add_residuals in making this plot.
 
+proposed_model <- lm(bwt ~ gaweeks + mheight + ppbmi + smoken + mrace, data = birthweight_df)
+
+# Add predictions and residuals, then plot
+birthweight_df %>% 
+  add_predictions(proposed_model) %>% 
+  add_residuals(proposed_model) %>% 
+  ggplot(aes(x = pred, y = resid)) +
+  geom_point(alpha = 0.5) +
+  geom_hline(yintercept = 0, color = "red", linetype = "dashed") +
+  labs(
+    title = "Residuals vs. Fitted Values (Proposed Model)",
+    x = "Fitted Values (Predicted Birthweight)",
+    y = "Residuals"
+  ) +
+  theme_minimal()
+
+
 ```
  
+ The residuals are relatively symmetrically distributed around the horizontal line at y = 0 for the majority of the data range (fitted values ranging primarily between 2000g and 4000g). This suggests the linear model captures the central tendency of the data reasonably well. The noticeable outliers on the left end may represent babies that were premature at birth or those with medical complications that would explain a lower weight.
+
+ 
+Compare my proposed model against:
+1) main effects model: length at birth (blength) and gestational age (gaweeks)
+2) interaction model: head circumference, length, sex, and all possible interactions
+
+I utilize Monte Carlo cross-validation (crossv_mc) with 100 splits to calculate RMSE for each model
 ```{r} 
 #Compare your model to two others:
 #One using length at birth and gestational age as predictors (main effects only)
 #One using head circumference, length, sex, and all interactions (including the three-way interaction) between these
 #Make this comparison in terms of the cross-validated prediction error; use crossv_mc and functions in purrr as appropriate.
+# Create cross-validation splits
+cv_df <- 
+  crossv_mc(birthweight_df, n = 100) %>% 
+  mutate(
+    train = map(train, as_tibble),
+    test = map(test, as_tibble)
+  )
 
-#Note that although we expect your model to be reasonable, model building itself is not a main idea of the course and we don’t necessarily expect your model to be “optimal”.
+# Fit models and calculate RMSE
+cv_results <- 
+  cv_df %>% 
+  mutate(
+    # Model 1: My Proposed Model
+    mod_proposed = map(train, \(df) lm(bwt ~ gaweeks + mheight + ppbmi + smoken + mrace, data = df)),
+    
+    # Model 2: Length and Gestational Age (Main Effects)
+    mod_main = map(train, \(df) lm(bwt ~ blength + gaweeks, data = df)),
+    
+    # Model 3: Head Circumference, Length, Sex (Interactions)
+    mod_interaction = map(train, \(df) lm(bwt ~ bhead * blength * babysex, data = df))
+  ) %>% 
+  mutate(
+    rmse_proposed = map2_dbl(mod_proposed, test, \(mod, df) rmse(mod, df)),
+    rmse_main = map2_dbl(mod_main, test, \(mod, df) rmse(mod, df)),
+    rmse_interaction = map2_dbl(mod_interaction, test, \(mod, df) rmse(mod, df))
+  )
 
-
-
+# Visualize the comparison
+cv_results %>% 
+  select(starts_with("rmse")) %>% 
+  pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "rmse",
+    names_prefix = "rmse_"
+  ) %>% 
+  mutate(model = fct_reorder(model, rmse)) %>% 
+  ggplot(aes(x = model, y = rmse)) +
+  geom_violin(aes(fill = model), alpha = 0.5) +
+  labs(
+    title = "Cross-Validated RMSE Comparison",
+    x = "Model",
+    y = "RMSE"
+  ) +
+  theme_minimal()
 
 ```
 
+The violin plot establishes a clear hierarchy in the models' performances based on the RMSE.
+The best model is the interaction model, which includes head circumference, length, sex, and all interactions, as it has the lowest RMSE. This model is most accurate at predicting birthweight.This makes fundamental sense as it uses variables that are direct physical measures of the baby at birth.
+
+The next best model is the main effects model, which uses only birth length and gestational age. It makes sense that this model performs decently as there is a direct physical measure from the baby (the length/height, which is a part of the 'volume' of the baby) and the gestational age (one expects a premature baby to be underweight).
+
+My proposed model was unforunately the weakest, as it relied on the mother's characteristics i.e. age, race, smoking status, etc. This model had the highest RMSE. While these factors are certainly relevant to the risk of being outside of ideal birthweight (ex: smoking during pregnancy is an obviously detrimental factor to gestational development, which could lead to lower birthweight), they are not as accurate in predicting the exact birthweight in grams of a baby compared to direct measurements of the baby. 
 
 
 
