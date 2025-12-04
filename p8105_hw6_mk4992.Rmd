@@ -1,0 +1,178 @@
+---
+title: "p8105_hw6_mk4992"
+author: "Maryam Khalid"
+date: "2025-12-01"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE
+)
+library(tidyverse)
+library(broom)
+library(janitor)
+library(purrr)
+
+set.seed(8105)
+
+```
+
+# Problem 1: Homicide Data Across U.S. Cities
+
+The Washington Post has gathered data on over 52,000 homicides in 50 large U.S. cities over the past decade and found that across the country, there are areas where murder is common but arrests are rare.
+
+```{r}
+homicide_raw <- read_csv("data/homicide-data.csv")
+
+homicide_raw %>%
+  glimpse()
+
+```
+
+The raw dataset includes 52,179 homicide records from 50 large U.S. cities between the years 2007 and 2017. Each observation represents a single homicide case. The dataset contains variables describing the victim (first and last name, race, age, sex), date in which the case was first reported, location (city, state, longitude, latitude), and the status of the case (case closed by arrest, open/no arrest, case closed without arrest). 
+
+```{r}
+#DATA IMPORT AND CLEANING:
+#Create city_state variable and summarize within cities to obtain total # of homicides & # of unsolved homicides
+#Create binary resolution variable (1 = resolved/closed by arrest; 0 = unresolved
+#Omit specific cities (Dallas, Phoenix, KC, Tulsa)
+#Limit analysis to datapoints in which victim_race is white or Black
+#Ensure victim_age is numeric
+
+homicide_df <- 
+  homicide_raw %>% 
+  mutate(
+    city_state = str_c(city, ", ", state),
+    resolution = as.numeric(disposition == "Closed by arrest"),
+    victim_age = as.numeric(victim_age)
+  ) %>% 
+  filter(
+    !city_state %in% c("Dallas, TX", "Phoenix, AZ", "Kansas City, MO", "Tulsa, AL"),
+    victim_race %in% c("White", "Black")
+  ) %>% 
+  select(city_state, resolution, victim_age, victim_sex, victim_race)
+
+```
+
+
+```{r}
+#Analysis of Baltimore, MD
+#Fit logistic regression model to resolve the outcome (resolved vs unresolved) based on victim age, sex, and race as predictors; use glm; save output of glm as an R object; apply the broom::tidy to this object
+
+#Obtain the estimate and confidence interval of the adjusted odds ratio for solving homicides comparing male victims to female victims keeping all other variables fixed.
+
+baltimore_glm <- 
+  homicide_df %>% 
+  filter(city_state == "Baltimore, MD") %>% 
+  glm(resolution ~ victim_age + victim_sex + victim_race, family = binomial(), data = .)
+
+baltimore_results <- 
+  baltimore_glm %>% 
+  broom::tidy(conf.int = TRUE, exponentiate = TRUE) %>% 
+  filter(term == "victim_sexMale") %>% 
+  select(term, estimate, conf.low, conf.high)
+
+baltimore_results %>% 
+  knitr::kable(digits = 3)
+
+
+
+```
+
+In Baltimore, keeping all over variables fixed, the odds of solving a homicide for a male victim are 
+r round(baltimore_results$estimate, 3) times the odds of solving a homicide for a female victim.
+
+
+```{r}
+# Analysis: All Cities
+#Run same logistic regression for each of the cities using tidy pipeline with purrr::map, list columns, and unnest as necessary to create dataframe with estimated ORs and CIs for each city
+city_glm_results <- 
+  homicide_df %>% 
+  nest(data = -city_state) %>% 
+  mutate(
+    models = map(data, \(df) glm(resolution ~ victim_age + victim_sex + victim_race, 
+                                family = binomial(), data = df)),
+    results = map(models, \(mod) broom::tidy(mod, conf.int = TRUE, exponentiate = TRUE))
+  ) %>% 
+  select(city_state, results) %>% 
+  unnest(results) %>% 
+  filter(term == "victim_sexMale") %>% 
+  select(city_state, estimate, conf.low, conf.high)
+
+head(city_glm_results)
+```
+
+```{r}
+#Visualization
+#Plot the estimated odds ratios and confidence intervals for each city, organized by the magnitude of the estimated OR
+
+city_glm_results %>% 
+  mutate(city_state = fct_reorder(city_state, estimate)) %>% 
+  ggplot(aes(x = city_state, y = estimate)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.2) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "red") +
+  coord_flip() +
+  labs(
+    title = "Adjusted Odds Ratios for Solving Homicides",
+    subtitle = "Comparing Male vs. Female Victims (controlled for Age and Race)",
+    x = "City",
+    y = "Odds Ratio (Male vs. Female)"
+  ) +
+  theme_minimal()
+```
+
+Comments on the Plot: 
+# Problem 2: Central Park Weather data
+```{r} 
+
+#import data
+library(p8105.datasets)
+data("weather_df")
+
+```
+
+```{r}
+ #Establish a simple linear regression with tmax as the response with tmin and prcp as the predictors, and are interested in the distribution of two quantities estimated from these data
+
+#Use 5000 bootstrap samples and, for each bootstrap sample, produce estimates of these two quantities. Plot the distribution of your estimates, and describe these in words. Using the 5000 bootstrap estimates, identify the 2.5% and 97.5% quantiles to provide a 95% confidence interval for the items
+
+
+```
+
+
+# Problem 3: Child's Birthweight
+```{r} 
+
+#Load and clean the data for regression analysis (i.e. use appropriate variable names, convert numeric to factor where appropriate, check for the presence of missing data, etc.).
+
+```
+
+
+```{r} 
+#Propose a regression model for birthweight. This model may be based on a hypothesized structure for the factors that underly birthweight, on a data-driven model-building process, or a combination of the two. Describe your modeling process and show a plot of model residuals against fitted values – use add_predictions and add_residuals in making this plot.
+
+```
+ 
+```{r} 
+#Compare your model to two others:
+#One using length at birth and gestational age as predictors (main effects only)
+#One using head circumference, length, sex, and all interactions (including the three-way interaction) between these
+#Make this comparison in terms of the cross-validated prediction error; use crossv_mc and functions in purrr as appropriate.
+
+#Note that although we expect your model to be reasonable, model building itself is not a main idea of the course and we don’t necessarily expect your model to be “optimal”.
+
+
+
+
+```
+
+
+
+
+
