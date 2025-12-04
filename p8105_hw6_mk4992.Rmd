@@ -132,6 +132,8 @@ For most cities demonstrated, the estimated OR is less than 1. This suggests tha
 Cities in which their error bar does not cross the dashed red line where OR = 1 have a statistically significant difference. 
 
 New York City, NY, where we live, has the lowest estimated OR, indicating a strong disparity where female victim cases are much more likely to be solved than male victim cases. 
+
+# Problem 2: Central Park Weather
 ```{r} 
 
 #import data
@@ -140,14 +142,93 @@ data("weather_df")
 
 ```
 
+
 ```{r}
  #Establish a simple linear regression with tmax as the response with tmin and prcp as the predictors, and are interested in the distribution of two quantities estimated from these data
 
 #Use 5000 bootstrap samples and, for each bootstrap sample, produce estimates of these two quantities. Plot the distribution of your estimates, and describe these in words. Using the 5000 bootstrap estimates, identify the 2.5% and 97.5% quantiles to provide a 95% confidence interval for the items
 
+bootstrap_results <- 
+  weather_df %>% 
+  modelr::bootstrap(n = 5000) %>% 
+  mutate(
+    models = map(strap, \(df) lm(tmax ~ tmin + prcp, data = df)),
+    
+    # Extract R-squared
+    results_glance = map(models, broom::glance),
+    
+    # Extract coefficients
+    results_tidy = map(models, broom::tidy)
+  ) %>% 
+  select(-strap, -models) %>% 
+  unnest(results_glance) %>% 
+  select(.id, r.squared, results_tidy) %>% 
+  unnest(results_tidy) %>% 
+  select(.id, r.squared, term, estimate) %>% 
+  pivot_wider(
+    names_from = term, 
+    values_from = estimate
+  ) %>% 
+  rename(
+    beta_0 = `(Intercept)`,
+    beta_1 = tmin,
+    beta_2 = prcp
+  ) %>% 
+  mutate(
+    # CALCULATING LOG(BETA0 * BETA1)
+    log_beta0_beta1 = log(beta_0 * beta_1)
+  )
 
+head(bootstrap_results)
 ```
 
+#Visualizing the Distributions
+```{r}
+# Plot for R-squared
+p1 <- bootstrap_results %>% 
+  ggplot(aes(x = r.squared)) +
+  geom_density(fill = "blue", alpha = 0.5) +
+  labs(
+    title = "Distribution of R-squared",
+    x = "Estimated R-squared",
+    y = "Density"
+  ) +
+  theme_minimal()
+
+# Plot for log(beta0 * beta1)
+p2 <- bootstrap_results %>% 
+  ggplot(aes(x = log_beta0_beta1)) +
+  geom_density(fill = "green", alpha = 0.5) +
+  labs(
+    title = "Distribution of log(beta0 * beta1)",
+    x = "log(beta0 * beta1)",
+    y = "Density"
+  ) +
+  theme_minimal()
+
+# Display plots side-by-side
+library(patchwork)
+p1 + p2
+```
+
+The distribution of r^2 is approximately normal with a slight skew towards the right, centered around 0.943, indicating that tmin and prcp consistently explain a large proportion of the variance in maximum temperature across the bootstrap samples. 
+The distribution of log(beta_0 * beta_1) also appears to be normally distributed, suggesting that the estimates for this quantity are stable and follow a standard bell curve shape.
+
+
+```{r}
+ci_results <- 
+  bootstrap_results %>% 
+  summarize(
+    ci_lower_r2 = quantile(r.squared, 0.025),
+    ci_upper_r2 = quantile(r.squared, 0.975),
+    
+    ci_lower_log = quantile(log_beta0_beta1, 0.025),
+    ci_upper_log = quantile(log_beta0_beta1, 0.975)
+  )
+
+ci_results %>% 
+  knitr::kable(digits = 3)
+```
 
 # Problem 3: Child's Birthweight
 ```{r} 
